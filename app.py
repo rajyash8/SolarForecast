@@ -7,6 +7,25 @@ import plotly.express as px
 import pvlib
 from datetime import datetime, timedelta
 
+st.set_page_config(
+    page_title="Solar Forecast Dashboard",
+    page_icon="☀️",
+    layout="wide"
+)
+
+LATITUDE = 22.4707
+LONGITUDE = 70.0577
+TIMEZONE = "Asia/Kolkata"
+
+model = joblib.load("xgboost_model.pkl")
+gen_df = pd.read_csv("hourly_generation.csv")
+
+# ... fetch weather ...
+
+predict = st.button(
+    "🚀 Predict Tomorrow",
+    use_container_width=True
+)
 if predict:
 
     st.info("Fetching tomorrow's weather...")
