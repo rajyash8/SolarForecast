@@ -180,17 +180,9 @@ if predict:
         + weather["RADIATION"]*0.03
     )
 
-    weather["SEASON_Monsoon"] = (
-        weather["MONTH"].isin([6,7,8,9])
-    ).astype(int)
-
-    weather["SEASON_Summer"] = (
-        weather["MONTH"].isin([3,4,5])
-    ).astype(int)
-
     features = [
 
-        "IRRADIATION",
+       "IRRADIATION",
         "AMBIENT_TEMPERATURE",
         "MODULE_TEMPERATURE",
         "HOUR",
@@ -198,10 +190,7 @@ if predict:
         "DAY_OF_YEAR",
         "HOUR_SIN",
         "HOUR_COS",
-        "GEN_YESTERDAY",
-        "SEASON_Monsoon",
-        "SEASON_Summer"
-
+        "GEN_YESTERDAY"
     ]
 
     X = weather[features]
