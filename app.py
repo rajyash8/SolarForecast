@@ -7,32 +7,120 @@ import plotly.express as px
 import pvlib
 from datetime import datetime, timedelta
 
+# -----------------------------
+# Page Config
+# -----------------------------
+
 st.set_page_config(
     page_title="Solar Forecast Dashboard",
     page_icon="☀️",
     layout="wide"
 )
 
+# -----------------------------
+# Header
+# -----------------------------
+
+st.title("☀️ Day Ahead Solar Generation Forecasting")
+
+st.markdown(
+"""
+### Reliance Industries Limited • Jamnagar Solar Plant
+
+Live Weather Forecast • Machine Learning • XGBoost
+"""
+)
+
+st.divider()
+
+# -----------------------------
+# Constants
+# -----------------------------
+
 LATITUDE = 22.4707
 LONGITUDE = 70.0577
 TIMEZONE = "Asia/Kolkata"
 
+# -----------------------------
+# Load Model
+# -----------------------------
+
 model = joblib.load("xgboost_model.pkl")
+
+# -----------------------------
+# Load Yesterday Generation
+# -----------------------------
+
 gen_df = pd.read_csv("hourly_generation.csv")
 
-# ... fetch weather ...
+# -----------------------------
+# Open Meteo API
+# -----------------------------
+
+url = (
+    f"https://api.open-meteo.com/v1/forecast?"
+    f"latitude={LATITUDE}"
+    f"&longitude={LONGITUDE}"
+    f"&hourly=temperature_2m,"
+    f"relative_humidity_2m,"
+    f"cloud_cover,"
+    f"wind_speed_10m,"
+    f"shortwave_radiation"
+    f"&forecast_days=2"
+    f"&timezone=Asia/Kolkata"
+)
+
+response = requests.get(url).json()
+
+weather = pd.DataFrame({
+
+    "DATE_TIME": response["hourly"]["time"],
+    "TEMPERATURE": response["hourly"]["temperature_2m"],
+    "HUMIDITY": response["hourly"]["relative_humidity_2m"],
+    "CLOUD_COVER": response["hourly"]["cloud_cover"],
+    "WIND_SPEED": response["hourly"]["wind_speed_10m"],
+    "RADIATION": response["hourly"]["shortwave_radiation"]
+
+})
+
+weather["DATE_TIME"] = pd.to_datetime(weather["DATE_TIME"])
+
+today = datetime.now().date()
+tomorrow = today + timedelta(days=1)
+
+weather = weather[
+    weather["DATE_TIME"].dt.date == tomorrow
+].reset_index(drop=True)
+
+# -----------------------------
+# Current Weather
+# -----------------------------
+
+current = response["hourly"]
+
+c1, c2, c3, c4 = st.columns(4)
+
+c1.metric("🌡 Temperature", f"{current['temperature_2m'][0]} °C")
+c2.metric("☁ Cloud Cover", f"{current['cloud_cover'][0]} %")
+c3.metric("💨 Wind Speed", f"{current['wind_speed_10m'][0]} km/h")
+c4.metric("💧 Humidity", f"{current['relative_humidity_2m'][0]} %")
+
+# -----------------------------
+# Predict Button
+# -----------------------------
 
 predict = st.button(
     "🚀 Predict Tomorrow",
     use_container_width=True
 )
+
 if predict:
 
     st.info("Fetching tomorrow's weather...")
 
-    # ---------------------------------
-    # Solar Features
-    # ---------------------------------
+    # -----------------------------
+    # Solar Position
+    # -----------------------------
 
     site = pvlib.location.Location(
         LATITUDE,
@@ -53,25 +141,25 @@ if predict:
     weather["CLEAR_SKY_DNI"] = clearsky["dni"].values
     weather["CLEAR_SKY_DHI"] = clearsky["dhi"].values
 
-    # ---------------------------------
+    # -----------------------------
     # Time Features
-    # ---------------------------------
+    # -----------------------------
 
     weather["HOUR"] = weather["DATE_TIME"].dt.hour
     weather["MONTH"] = weather["DATE_TIME"].dt.month
     weather["DAY_OF_YEAR"] = weather["DATE_TIME"].dt.dayofyear
 
     weather["HOUR_SIN"] = np.sin(
-        2 * np.pi * weather["HOUR"] / 24
+        2*np.pi*weather["HOUR"]/24
     )
 
     weather["HOUR_COS"] = np.cos(
-        2 * np.pi * weather["HOUR"] / 24
+        2*np.pi*weather["HOUR"]/24
     )
 
-    # ---------------------------------
+    # -----------------------------
     # Previous Day Generation
-    # ---------------------------------
+    # -----------------------------
 
     weather = weather.merge(
         gen_df,
@@ -79,9 +167,9 @@ if predict:
         how="left"
     )
 
-    # ---------------------------------
-    # Model Features
-    # ---------------------------------
+    # -----------------------------
+    # Feature Engineering
+    # -----------------------------
 
     weather["IRRADIATION"] = weather["RADIATION"]
 
@@ -89,15 +177,15 @@ if predict:
 
     weather["MODULE_TEMPERATURE"] = (
         weather["TEMPERATURE"]
-        + weather["RADIATION"] * 0.03
+        + weather["RADIATION"]*0.03
     )
 
     weather["SEASON_Monsoon"] = (
-        weather["MONTH"].isin([6, 7, 8, 9])
+        weather["MONTH"].isin([6,7,8,9])
     ).astype(int)
 
     weather["SEASON_Summer"] = (
-        weather["MONTH"].isin([3, 4, 5])
+        weather["MONTH"].isin([3,4,5])
     ).astype(int)
 
     features = [
@@ -118,26 +206,23 @@ if predict:
 
     X = weather[features]
 
-    # ---------------------------------
+    # -----------------------------
     # Prediction
-    # ---------------------------------
+    # -----------------------------
 
     weather["PREDICTED_AC_POWER"] = model.predict(X)
 
-    weather["PREDICTED_AC_POWER"] = (
-        weather["PREDICTED_AC_POWER"]
-        .clip(lower=0)
-    )
+    weather["PREDICTED_AC_POWER"] = weather[
+        "PREDICTED_AC_POWER"
+    ].clip(lower=0)
 
-    # ---------------------------------
+    # -----------------------------
     # Summary
-    # ---------------------------------
+    # -----------------------------
 
     peak_power = weather["PREDICTED_AC_POWER"].max()
 
-    total_energy = (
-        weather["PREDICTED_AC_POWER"].sum() / 1000
-    )
+    total_energy = weather["PREDICTED_AC_POWER"].sum()/1000
 
     peak_time = weather.loc[
         weather["PREDICTED_AC_POWER"].idxmax(),
@@ -146,34 +231,34 @@ if predict:
 
     st.success("Prediction Completed Successfully!")
 
-    # ---------------------------------
-    # Model Performance
-    # ---------------------------------
+    # -----------------------------
+    # Model Metrics
+    # -----------------------------
 
     st.subheader("📊 Model Performance")
 
-    c1, c2, c3 = st.columns(3)
+    m1,m2,m3 = st.columns(3)
 
-    c1.metric(
+    m1.metric(
         "R² Score",
         "0.9966"
     )
 
-    c2.metric(
+    m2.metric(
         "RMSE",
         "480.31"
     )
 
-    c3.metric(
+    m3.metric(
         "MAE",
         "242.74 kW"
     )
 
-    # ---------------------------------
+    # -----------------------------
     # Forecast Summary
-    # ---------------------------------
+    # -----------------------------
 
-    c1, c2, c3 = st.columns(3)
+    c1,c2,c3 = st.columns(3)
 
     c1.metric(
         "⚡ Peak Power",
@@ -190,23 +275,34 @@ if predict:
         peak_time.strftime("%H:%M")
     )
 
-    # ---------------------------------
-    # Forecast Plot
-    # ---------------------------------
+    # -----------------------------
+    # Forecast Graph
+    # -----------------------------
 
     fig = px.line(
+
         weather,
+
         x="DATE_TIME",
+
         y="PREDICTED_AC_POWER",
-        title="24-Hour Solar Generation Forecast",
-        markers=True
+
+        markers=True,
+
+        title="24-Hour Solar Generation Forecast"
+
     )
 
     fig.update_layout(
+
         template="plotly_dark",
+
         xaxis_title="Time",
+
         yaxis_title="Predicted AC Power (kW)",
+
         height=550
+
     )
 
     st.plotly_chart(
@@ -214,91 +310,114 @@ if predict:
         use_container_width=True
     )
 
-    # ---------------------------------
+    # -----------------------------
     # Feature Importance
-    # ---------------------------------
+    # -----------------------------
 
     st.subheader("⭐ Feature Importance")
 
     st.image(
+
         "feature_importance.png",
-        caption="Top Features Used by XGBoost",
+
         use_container_width=True
+
     )
 
-    # ---------------------------------
+    # -----------------------------
     # Model Information
-    # ---------------------------------
+    # -----------------------------
 
     st.subheader("🤖 Model Information")
 
-    st.markdown("""
-**Model:** XGBoost Regressor
+    st.info("""
 
-**Forecast Horizon:** 24 Hours
+Algorithm : XGBoost Regressor
 
-**Target Variable:** AC Power (kW)
+Forecast Horizon : 24 Hours
 
-**Weather Source:** Open-Meteo API
+Target : AC Power (kW)
 
-**Solar Calculations:** pvlib
+Weather API : Open-Meteo
 
-**Location:** Reliance Industries Ltd., Jamnagar
+Solar Calculations : pvlib
+
+Location : Reliance Industries Ltd. - Jamnagar
+
 """)
 
-    # ---------------------------------
+    # -----------------------------
     # Tomorrow Weather
-    # ---------------------------------
+    # -----------------------------
 
     st.subheader("🌦 Tomorrow Weather Forecast")
 
     st.dataframe(
 
         weather[
+
             [
+
                 "DATE_TIME",
+
                 "TEMPERATURE",
+
                 "HUMIDITY",
+
                 "WIND_SPEED",
+
                 "CLOUD_COVER",
+
                 "RADIATION"
+
             ]
+
         ],
 
         use_container_width=True
 
     )
 
-    # ---------------------------------
+    # -----------------------------
     # Hourly Prediction
-    # ---------------------------------
+    # -----------------------------
 
     st.subheader("📋 Hourly Solar Forecast")
 
     st.dataframe(
 
         weather[
+
             [
+
                 "DATE_TIME",
+
                 "PREDICTED_AC_POWER"
+
             ]
+
         ],
 
         use_container_width=True
 
     )
 
-    # ---------------------------------
+    # -----------------------------
     # Download CSV
-    # ---------------------------------
+    # -----------------------------
 
     csv = weather.to_csv(index=False)
 
     st.download_button(
+
         "⬇ Download Forecast CSV",
+
         csv,
+
         "Tomorrow_Solar_Generation_Forecast.csv",
+
         "text/csv"
+
     )
 
     st.divider()
@@ -306,3 +425,4 @@ if predict:
     st.caption(
         "Developed by Yash Raj | Machine Learning Intern @ Reliance Industries Ltd."
     )
+    
