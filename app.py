@@ -52,6 +52,7 @@ model = joblib.load("xgboost_model.pkl")
 # -----------------------------
 
 gen_df = pd.read_csv("hourly_generation.csv")
+metrics_df = pd.read_csv("evaluation_metrics.csv")
 
 # -----------------------------
 # Open Meteo API
@@ -226,21 +227,25 @@ if predict:
 
     st.subheader("📊 Model Performance")
 
-    m1,m2,m3 = st.columns(3)
+    r2 = metrics_df.loc[0, "R2"]
+    rmse = metrics_df.loc[0, "RMSE"]
+    mae = metrics_df.loc[0, "MAE"]
+
+    m1, m2, m3 = st.columns(3)
 
     m1.metric(
         "R² Score",
-        "0.9966"
+        f"{r2:.4f}"
     )
 
     m2.metric(
         "RMSE",
-        "480.31"
+        f"{rmse:.2f}"
     )
 
     m3.metric(
         "MAE",
-        "242.74 kW"
+        f"{mae:.2f} kW"
     )
 
     # -----------------------------
